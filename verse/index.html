@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src https://lrclib.net; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VERSE">
+<meta name="theme-color" content="#0b0809">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<title>VERSE</title>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="player.css">
+<style id="usercss"></style>
+</head>
+<body data-bg="blobs" class="player ui">
+  <!-- moteur VERSE -->
+  <canvas id="bg"></canvas>
+  <div id="bgmedia"></div>
+  <svg id="decor" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="stage"></div>
+  <div id="flash"></div>
+  <div id="vignette"></div>
+  <div id="grain"></div>
+  <div id="hud" data-corner="bl"><img id="hud-art" alt=""><div><div id="hud-title"></div><div id="hud-artist"></div></div></div>
+  <div id="pausechip">en pause</div>
+
+  <div id="tap"></div>
+  <audio id="audio" playsinline preload="auto"></audio>
+
+  <!-- Glass Player -->
+  <div id="ui">
+    <div class="topbar">
+      <button id="btn-lib" class="gbtn" aria-label="Bibliothèque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+      <div class="brand">VERSE</div>
+      <button id="btn-studio" class="gbtn" aria-label="Personnaliser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg></button>
+    </div>
+
+    <div id="player">
+      <div class="card glass">
+        <div class="cardtop">
+          <div class="artbox"><img id="np-art" alt="" hidden><div class="artph">♪</div></div>
+          <div class="meta">
+            <div class="label">À l'écoute</div>
+            <div id="np-title">Aucune musique</div>
+            <div id="np-artist">Ajoute tes MP3 pour commencer</div>
+          </div>
+          <div class="cardbtns">
+            <button id="btn-lyrics" class="mini" aria-label="Paroles">❝</button>
+            <button id="btn-full" class="mini" aria-label="Paroles plein écran">⤢</button>
+          </div>
+        </div>
+        <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+        <div class="times"><span id="t-cur">0:00</span><span id="t-dur">0:00</span></div>
+      </div>
+
+      <div id="wheel" class="glass">
+        <div class="ticks"></div>
+        <button id="wl-menu" class="wl menu">MENU</button>
+        <button id="prev" class="wl prev" aria-label="Précédent"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5.5v13a.8.8 0 0 1-1.2.7L9.5 12.7a.8.8 0 0 1 0-1.4l9.3-6.5a.8.8 0 0 1 1.2.7z"/></svg></button>
+        <button id="next" class="wl next" aria-label="Suivant"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5.5v13a.8.8 0 0 0 1.2.7l9.3-6.5a.8.8 0 0 0 0-1.4L5.2 4.8A.8.8 0 0 0 4 5.5z"/></svg></button>
+        <button id="play" class="wl play" aria-label="Lecture / pause"></button>
+        <button id="wheel-center" aria-label="Paroles plein écran"><span>VERSE</span></button>
+      </div>
+
+      <div class="minirow">
+        <button id="shuffle" class="gbtn sm" aria-label="Aléatoire"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
+        <span class="hint">Tourne la molette pour avancer · touche les paroles pour le plein écran</span>
+        <button id="repeat" class="gbtn sm" aria-label="Répéter"></button>
+      </div>
+    </div>
+  </div>
+  <div id="seekbubble"></div>
+
+  <!-- feuilles -->
+  <div id="scrim"></div>
+  <section id="sh-library" class="sheet glass">
+    <div class="grab"></div>
+    <header><h2>Bibliothèque <small id="lib-count"></small></h2><button class="close">OK</button></header>
+    <div class="row">
+      <label class="btn primary addbtn">＋ Ajouter des musiques<input id="lib-file" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac" multiple hidden></label>
+      <button id="lib-edit" class="btn" style="flex:none">Modifier</button>
+    </div>
+    <input id="lib-search" type="search" placeholder="Rechercher un titre, un artiste…">
+    <div id="lib-list" class="scroll"></div>
+  </section>
+  <section id="sh-lyrics" class="sheet glass">
+    <div class="grab"></div>
+    <header><h2>Paroles</h2><button class="close">OK</button></header>
+    <div id="ly-body" class="scroll"></div>
+  </section>
+  <section id="sh-studio" class="sheet glass tall">
+    <div class="grab"></div>
+    <header><h2>Personnaliser</h2>
+      <label class="advsw"><input type="checkbox" id="st-adv"><span class="sw"></span><span>Sur-mesure</span></label>
+      <button class="close">OK</button></header>
+    <div id="st-body" class="scroll"></div>
+  </section>
+
+  <div id="a2hs" class="glass">Pour l'installer comme une vraie appli : touche <b>Partager</b> puis <b>Sur l'écran d'accueil</b>.<button>OK</button></div>
+  <div id="toast"></div>
+
+  <script src="theme.js"></script>
+  <script src="player.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
