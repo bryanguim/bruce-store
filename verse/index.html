@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src https://lrclib.net; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com; media-src 'self' blob:; font-src 'self'; connect-src https://lrclib.net https://www.youtube.com https://noembed.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -76,6 +76,7 @@
     </div>
   </div>
   <div id="seekbubble"></div>
+  <div id="ytwrap" class="glass"><div id="ytplayer"></div></div>
 
   <!-- feuilles -->
   <div id="scrim"></div>
@@ -83,7 +84,8 @@
     <div class="grab"></div>
     <header><h2>Bibliothèque <small id="lib-count"></small></h2><button class="close">OK</button></header>
     <div class="row">
-      <label class="btn primary addbtn">＋ Ajouter des musiques<input id="lib-file" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac" multiple hidden></label>
+      <label class="btn primary addbtn">＋ MP3<input id="lib-file" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac" multiple hidden></label>
+      <button id="lib-yt" class="btn ytbtn">▶ YouTube</button>
       <button id="lib-edit" class="btn" style="flex:none">Modifier</button>
     </div>
     <input id="lib-search" type="search" placeholder="Rechercher un titre, un artiste…">
@@ -93,6 +95,16 @@
     <div class="grab"></div>
     <header><h2>Paroles</h2><button class="close">OK</button></header>
     <div id="ly-body" class="scroll"></div>
+  </section>
+  <section id="sh-yt" class="sheet glass">
+    <div class="grab"></div>
+    <header><h2>YouTube</h2><button class="close">OK</button></header>
+    <div class="scroll">
+      <p class="muted">Colle un ou plusieurs liens YouTube (une vidéo, ou une playlist entière). Dans l'appli YouTube : <b>Partager → Copier le lien</b>, puis reviens ici.</p>
+      <textarea id="yt-text" placeholder="https://youtu.be/…&#10;https://www.youtube.com/playlist?list=…" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:10px"><button id="yt-paste" class="btn">📋 Coller</button><button id="yt-add" class="btn primary">Ajouter</button></div>
+      <p class="muted">À savoir : la vidéo reste visible pendant la lecture (règle de YouTube), la musique s'arrête si tu verrouilles l'écran, et il peut y avoir des pubs. Pour écouter écran verrouillé, garde tes MP3.</p>
+    </div>
   </section>
   <section id="sh-studio" class="sheet glass tall">
     <div class="grab"></div>

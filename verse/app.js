@@ -83,7 +83,7 @@ function applyCfg(c) {
 let pal = { accents: VT.DEFAULT.colors.accents, bg: VT.DEFAULT.colors.blobs, text: VT.DEFAULT.colors.text, dark: VT.DEFAULT.colors.base };
 let coverPal = null;
 async function paletteFromImage(src) {
-  const img = new Image(); img.src = src; await img.decode();
+  const img = new Image(); if (/^https?:/.test(src)) img.crossOrigin = 'anonymous'; img.src = src; await img.decode();
   const N = 48, c = document.createElement('canvas'); c.width = c.height = N;
   const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, N, N);
   const d = x.getImageData(0, 0, N, N).data;
