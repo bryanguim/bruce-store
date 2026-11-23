@@ -39,6 +39,7 @@ public class Theme {
     public boolean h24 = true, showDate = true, showHero = true, showBanner = true;
     public int anim = 1;                           // 0 rapide · 1 normal · 2 aucune
     public int zoom = 125;                         // 100..150 %
+    public int clockPos = 0;                       // 0 gauche · 1 centre · 2 droite
     public int layout = 0;                         // 0 barre en bas (dock) · 1 grandes affiches
     public int greeting = 0;                       // 0 Bonsoir · 1 Bonsoir Papa · 2 Bonsoir Bruce · 3 Bonsoir la famille · 4 aucun
 
@@ -87,7 +88,7 @@ public class Theme {
             o.put("dockPos", dockPos); o.put("iconMono", iconMono); o.put("textScale", textScale); o.put("clockStyle", clockStyle);
             o.put("h24", h24); o.put("showDate", showDate); o.put("showHero", showHero); o.put("showBanner", showBanner);
             o.put("anim", anim); o.put("zoom", zoom); o.put("greeting", greeting);
-            o.put("wallImage", wallImage); o.put("wallDim", wallDim); o.put("layout", layout);
+            o.put("wallImage", wallImage); o.put("wallDim", wallDim); o.put("layout", layout); o.put("clockPos", clockPos);
         } catch (Exception ignored) {}
         return o;
     }
@@ -123,6 +124,7 @@ public class Theme {
             t.greeting = clampI(o, "greeting", t.greeting, 0, GREETINGS.length - 1);
             t.wallDim = clampI(o, "wallDim", t.wallDim, 0, 80);
             t.layout = clampI(o, "layout", t.layout, 0, 1);
+            t.clockPos = clampI(o, "clockPos", t.clockPos, 0, 2);
             String wi = o.optString("wallImage", "");
             t.wallImage = wi.startsWith("content://media/") ? wi : "";
             t.h24 = o.optBoolean("h24", t.h24);

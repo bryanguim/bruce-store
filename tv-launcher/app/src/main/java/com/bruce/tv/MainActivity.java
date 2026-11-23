@@ -226,7 +226,11 @@ public class MainActivity extends Activity {
         dateView = text(16, T.dim(0xB0), "sans-serif-medium", Typeface.NORMAL);
         dateView.setPadding(dp(3), dp(6), 0, 0);
         top.addView(dateView);
-        home.addView(top, at(-2, -2, Gravity.TOP | Gravity.START, 52, 30, 0, 0));
+        int hg = T.clockPos == 1 ? Gravity.CENTER_HORIZONTAL : T.clockPos == 2 ? Gravity.END : Gravity.START;
+        top.setGravity(hg);
+        if (clock != null) clock.setGravity(hg);
+        dateView.setGravity(hg);
+        home.addView(top, at(-2, -2, Gravity.TOP | hg, T.clockPos == 2 ? 0 : 52, 30, T.clockPos == 2 ? 52 : 0, 0));
 
         // --- pastille en verre en haut à droite
         Glass.Panel pill = new Glass.Panel(this, T, dp(24));
@@ -249,7 +253,9 @@ public class MainActivity extends Activity {
         avLp.leftMargin = dp(14);
         pr.addView(av, avLp);
         pill.addView(pr, new FrameLayout.LayoutParams(-2, -1));
-        home.addView(pill, at(-2, dp(48), Gravity.TOP | Gravity.END, 0, 34, 52, 0));
+        // la pastille passe à gauche quand l'heure est à droite
+        boolean pillLeft = T.clockPos == 2;
+        home.addView(pill, at(-2, dp(48), Gravity.TOP | (pillLeft ? Gravity.START : Gravity.END), pillLeft ? 52 : 0, 34, pillLeft ? 0 : 52, 0));
 
         // --- grand titre de l'appli sélectionnée
         heroTitle = null; heroSub = null; heroImage = null; heroImagePanel = null;
@@ -721,6 +727,7 @@ public class MainActivity extends Activity {
         o.add(opt("Zoom de sélection", () -> T.zoom + " %", d -> T.zoom = rng(T.zoom, 100, 150, 5, d), false));
         o.add(opt("Taille du texte", () -> T.textScale + " %", d -> T.textScale = rng(T.textScale, 80, 150, 10, d), false));
         o.add(opt("Horloge", () -> new String[]{"Fine", "Grasse", "Masquée"}[T.clockStyle], d -> T.clockStyle = cyc(T.clockStyle, 3, d), false));
+        o.add(opt("Position de l'heure", () -> new String[]{"À gauche", "Au centre", "À droite"}[T.clockPos], d -> T.clockPos = cyc(T.clockPos, 3, d), false));
         o.add(opt("Format de l'heure", () -> T.h24 ? "24 h" : "12 h", d -> T.h24 = !T.h24, false));
         o.add(opt("Date", () -> onoff[T.showDate ? 0 : 1], d -> T.showDate = !T.showDate, false));
         o.add(opt("Message d'accueil", () -> Theme.GREETINGS[T.greeting] == null ? "Aucun" : ("Bonsoir" + Theme.GREETINGS[T.greeting]), d -> T.greeting = cyc(T.greeting, Theme.GREETINGS.length, d), false));
@@ -770,7 +777,8 @@ public class MainActivity extends Activity {
         o.add(new SOpt("Taille du texte", "Pour lire plus facilement de loin", () -> T.textScale >= 135 ? "Très grande" : T.textScale >= 115 ? "Grande" : "Normale",
                 d -> T.textScale = pickIn(sizes, T.textScale, d), false));
         o.add(new SOpt("Taille des applis", "La taille des icônes dans la barre du bas", () -> new String[]{"Petites", "Normales", "Grandes"}[T.dockSize], d -> T.dockSize = cyc(T.dockSize, 3, d), false));
-        o.add(new SOpt("Horloge", "Afficher l'heure en haut à gauche", () -> T.clockStyle == 2 ? "Cachée" : "Affichée", d -> T.clockStyle = T.clockStyle == 2 ? 0 : 2, false));
+        o.add(new SOpt("Position de l'heure", "Où l'heure et la date s'affichent en haut de l'écran", () -> new String[]{"À gauche", "Au centre", "À droite"}[T.clockPos], d -> T.clockPos = cyc(T.clockPos, 3, d), false));
+        o.add(new SOpt("Horloge", "Afficher l'heure en haut de l'écran", () -> T.clockStyle == 2 ? "Cachée" : "Affichée", d -> T.clockStyle = T.clockStyle == 2 ? 0 : 2, false));
         o.add(new SOpt("Animations", "Les petits mouvements quand on se déplace", () -> T.anim == 2 ? "Non" : "Oui", d -> T.anim = T.anim == 2 ? 1 : 2, false));
         return o;
     }
