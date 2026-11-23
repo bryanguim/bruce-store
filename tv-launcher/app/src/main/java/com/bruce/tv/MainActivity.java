@@ -259,7 +259,7 @@ public class MainActivity extends Activity {
 
         // --- grand titre de l'appli sélectionnée
         heroTitle = null; heroSub = null; heroImage = null; heroImagePanel = null;
-        if (T.showHero) {
+        if (T.showHero && T.layout != 2) {
             LinearLayout hero = new LinearLayout(this);
             hero.setOrientation(LinearLayout.VERTICAL);
             TextView kicker = text(12, T.dim(0x99), "sans-serif-medium", Typeface.BOLD);
@@ -294,6 +294,7 @@ public class MainActivity extends Activity {
         }
 
         if (T.layout == 1) { buildPosters(); updateClock(); return; }
+        if (T.layout == 2) { buildCarousel(); updateClock(); return; }
 
         // --- la barre des tâches (dock) en verre
         int tile = dp(T.dockTile());
@@ -411,6 +412,157 @@ public class MainActivity extends Activity {
         // éléments de la barre non utilisés ici (évite tout souci de référence vide)
         tip = new TextView(this); dot = new View(this);
         if (mode == 0) (refocus != null ? refocus : first).requestFocus();
+    }
+
+    // ================================================================== disposition « carrousel 3D »
+    static class CItem { String label, sub, tag; Drawable banner, icon; boolean glyph; Runnable click, menu; }
+    private final List<CItem> cItems = new ArrayList<>();
+    private final List<View> cCards = new ArrayList<>();
+    private final List<ImageView> cIcons = new ArrayList<>();
+    private int cIndex = 0;
+    private TextView cTitle, cSub;
+
+    private void buildCarousel() {
+        cItems.clear(); cCards.clear(); cIcons.clear();
+        for (String p : dockList()) {
+            final App a = apps.get(p);
+            CItem it = new CItem();
+            it.label = a.label; it.sub = "◀ ▶ pour tourner  ·  OK pour ouvrir  ·  ☰ options"; it.tag = a.pkg;
+            it.banner = a.banner; it.icon = a.icon;
+            it.click = () -> launch(a.pkg); it.menu = () -> appMenu(a, true);
+            cItems.add(it);
+        }
+        CItem all = new CItem();
+        all.label = "Toutes les applis"; all.sub = "Toutes tes applications installées"; all.tag = "__all";
+        all.icon = getDrawable(R.drawable.ic_grid); all.glyph = true; all.click = this::openAll;
+        cItems.add(all);
+        CItem set = new CItem();
+        set.label = "Réglages"; set.sub = "Style, couleurs, taille du texte…"; set.tag = "__settings";
+        set.icon = getDrawable(R.drawable.ic_gear); set.glyph = true; set.click = this::openSettings;
+        cItems.add(set);
+        cIndex = 0;
+        for (int i = 0; i < cItems.size(); i++) if (cItems.get(i).tag.equals(lastDockFocus)) cIndex = i;
+
+        float s = T.dockSize == 0 ? 0.85f : T.dockSize == 1 ? 1f : 1.18f;
+        final int w = dp(300 * s), h = dp(169 * s);
+        final FrameLayout stage = new FrameLayout(this);
+        stage.setClipChildren(false);
+        stage.setClipToPadding(false);
+        stage.setFocusable(true);
+        stage.setFocusableInTouchMode(true);
+        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(-1, h + dp(60), Gravity.CENTER);
+        slp.topMargin = dp(10);
+        home.addView(stage, slp);
+
+        final float r = dp(Math.max(10, T.radius));
+        for (int i = 0; i < cItems.size(); i++) {
+            CItem it = cItems.get(i);
+            FrameLayout c = new FrameLayout(this);
+            c.setBackground(tileBg(false, r));
+            c.setClipToOutline(true);
+            c.setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View view, Outline o) { o.setRoundRect(0, 0, view.getWidth(), view.getHeight(), r); }
+            });
+            c.setCameraDistance(9000 * getResources().getDisplayMetrics().density);
+            ImageView iv = new ImageView(this);
+            if (it.banner != null) {
+                iv.setImageDrawable(it.banner);
+                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                applyIconStyle(iv, false, false);
+                c.addView(iv, new FrameLayout.LayoutParams(-1, -1));
+            } else {
+                iv.setImageDrawable(it.icon);
+                iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                applyIconStyle(iv, it.glyph, false);
+                int is = dp(it.glyph ? 46 : 72);
+                c.addView(iv, new FrameLayout.LayoutParams(is, is, Gravity.CENTER));
+            }
+            stage.addView(c, new FrameLayout.LayoutParams(w, h, Gravity.CENTER));
+            cCards.add(c);
+            cIcons.add(iv);
+        }
+
+        LinearLayout cap = new LinearLayout(this);
+        cap.setOrientation(LinearLayout.VERTICAL);
+        cap.setGravity(Gravity.CENTER_HORIZONTAL);
+        cTitle = text(40, T.textColor(), "sans-serif", Typeface.BOLD);
+        cTitle.setGravity(Gravity.CENTER);
+        cTitle.setSingleLine(true);
+        cTitle.setEllipsize(TextUtils.TruncateAt.END);
+        cap.addView(cTitle, new LinearLayout.LayoutParams(-1, -2));
+        cSub = text(14, T.dim(0xA6), "sans-serif", Typeface.NORMAL);
+        cSub.setGravity(Gravity.CENTER);
+        cSub.setPadding(0, dp(8), 0, 0);
+        cap.addView(cSub, new LinearLayout.LayoutParams(-1, -2));
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        clp.setMargins(dp(60), 0, dp(60), dp(42));
+        home.addView(cap, clp);
+
+        final long[] down = {0};
+        stage.setOnKeyListener((v, code, e) -> {
+            boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT) { moveCarousel(-1); return true; }
+                if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { moveCarousel(1); return true; }
+                if (ok) { if (e.getRepeatCount() == 0) down[0] = e.getEventTime(); return true; }
+                return false;
+            }
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                CItem it = cItems.get(cIndex);
+                if (code == KeyEvent.KEYCODE_MENU) { if (it.menu != null) it.menu.run(); return true; }
+                if (ok) {
+                    if (e.getEventTime() - down[0] > 600 && it.menu != null) it.menu.run();
+                    else it.click.run();
+                    return true;
+                }
+            }
+            return code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT;
+        });
+        layoutCarousel(false);
+        tip = new TextView(this); dot = new View(this);
+        if (mode == 0) stage.requestFocus();
+    }
+
+    private void moveCarousel(int dir) {
+        int n = cItems.size();
+        int next = Math.max(0, Math.min(n - 1, cIndex + dir));
+        if (next == cIndex) {
+            // petit rebond en bout de rangée
+            View c = cCards.get(cIndex);
+            if (T.anim != 2) c.animate().translationX(dir * dp(14)).setDuration(90).withEndAction(() -> c.animate().translationX(0).setDuration(160).start()).start();
+            return;
+        }
+        cIndex = next;
+        layoutCarousel(true);
+    }
+
+    private void layoutCarousel(boolean animate) {
+        float s = T.dockSize == 0 ? 0.85f : T.dockSize == 1 ? 1f : 1.18f;
+        float r = dp(Math.max(10, T.radius));
+        for (int i = 0; i < cCards.size(); i++) {
+            View c = cCards.get(i);
+            int d = i - cIndex, ad = Math.abs(d);
+            float tx = d == 0 ? 0 : Math.signum(d) * (dp(195 * s) + (ad - 1) * dp(125 * s));
+            float ry = d == 0 ? 0 : (d < 0 ? 52 : -52);
+            float sc = d == 0 ? 1f : 0.8f;
+            float al = ad > 4 ? 0f : Math.max(0.15f, 1f - 0.2f * ad);
+            float tz = d == 0 ? dp(16) : -ad;
+            c.setBackground(tileBg(d == 0, r));
+            CItem it = cItems.get(i);
+            if (it.banner == null) applyIconStyle(cIcons.get(i), it.glyph, d == 0);
+            if (animate && T.anim != 2) {
+                c.animate().cancel();
+                c.animate().translationX(tx).rotationY(ry).scaleX(sc).scaleY(sc).alpha(al).translationZ(tz)
+                        .setDuration(dur(300)).setInterpolator(new DecelerateInterpolator(1.6f)).start();
+            } else {
+                c.setTranslationX(tx); c.setRotationY(ry); c.setScaleX(sc); c.setScaleY(sc); c.setAlpha(al); c.setTranslationZ(tz);
+            }
+        }
+        CItem it = cItems.get(cIndex);
+        lastDockFocus = it.tag;
+        cTitle.setText(it.label);
+        cSub.setText(it.sub);
+        if (animate && T.anim != 2) { cTitle.setAlpha(0.2f); cTitle.animate().alpha(1f).setDuration(dur(220)).start(); }
     }
 
     private void addPoster(LinearLayout row, View v, int w, int h) {
@@ -697,7 +849,7 @@ public class MainActivity extends Activity {
             for (int k = 0; k < Theme.PRESET_IDS.length; k++) if (Theme.PRESET_IDS[k].equals(T.id)) i = k;
             T = loadTheme(Theme.PRESET_IDS[cyc(i, Theme.PRESET_IDS.length, d)]);
         }, true));
-        o.add(opt("Disposition", () -> T.layout == 1 ? "Grandes affiches" : "Barre en bas", d -> T.layout = cyc(T.layout, 2, d), false));
+        o.add(opt("Disposition", () -> new String[]{"Barre en bas", "Grandes affiches", "Carrousel 3D"}[T.layout], d -> T.layout = cyc(T.layout, 3, d), false));
         o.add(opt("Couleur de sélection", () -> Theme.COLOR_NAMES[T.accent], d -> T.accent = cyc(T.accent, Theme.COLORS.length, d), false));
         o.add(opt("Couleur du texte", () -> Theme.COLOR_NAMES[T.text], d -> T.text = cyc(T.text, Theme.COLORS.length, d), false));
         o.add(opt("Fond · couleur", () -> Theme.BASE_NAMES[T.base], d -> T.base = cyc(T.base, Theme.BASES.length, d), true));
@@ -758,7 +910,7 @@ public class MainActivity extends Activity {
             for (int k = 0; k < Theme.PRESET_IDS.length; k++) if (Theme.PRESET_IDS[k].equals(T.id)) i = k;
             T = loadTheme(Theme.PRESET_IDS[cyc(i, Theme.PRESET_IDS.length, d)]);
         }, true));
-        o.add(new SOpt("Disposition", "La façon dont les applis sont rangées à l'écran", () -> T.layout == 1 ? "Grandes affiches" : "Barre en bas", d -> T.layout = cyc(T.layout, 2, d), false));
+        o.add(new SOpt("Disposition", "La façon dont les applis sont rangées à l'écran", () -> new String[]{"Barre en bas", "Grandes affiches", "Carrousel 3D"}[T.layout], d -> T.layout = cyc(T.layout, 3, d), false));
         o.add(new SOpt("Couleur", "La couleur de ce qui est sélectionné", () -> Theme.COLOR_NAMES[T.accent], d -> T.accent = cyc(T.accent, Theme.COLORS.length, d), false));
         o.add(new SOpt("Fond d'écran", "L'image derrière les applis", () -> new String[]{"Vagues", "Lumières", "Dégradé", "Uni", "Ma photo"}[T.wallStyle], d -> {
             T.wallStyle = cyc(T.wallStyle, 5, d);

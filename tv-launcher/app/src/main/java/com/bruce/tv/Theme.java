@@ -19,7 +19,7 @@ public class Theme {
     public static final String[] GLOW_NAMES = {"Blanc", "Bleu glacier", "Violet", "Cyan", "Rose", "Orange",
             "Doré", "Vert", "Indigo", "Caramel", "Aucune"};
 
-    public static final String[] PRESET_IDS = {"glass", "cinema", "neon", "salon", "clair", "sunset", "lisible", "marine"};
+    public static final String[] PRESET_IDS = {"glass", "cinema", "carrousel", "neon", "salon", "clair", "sunset", "lisible", "marine"};
 
     public String id, name;
     public int accent = 0, text = 0;               // index dans COLORS
@@ -40,7 +40,7 @@ public class Theme {
     public int anim = 1;                           // 0 rapide · 1 normal · 2 aucune
     public int zoom = 125;                         // 100..150 %
     public int clockPos = 0;                       // 0 gauche · 1 centre · 2 droite
-    public int layout = 0;                         // 0 barre en bas (dock) · 1 grandes affiches
+    public int layout = 0;                         // 0 barre en bas (dock) · 1 grandes affiches · 2 carrousel 3D
     public int greeting = 0;                       // 0 Bonsoir · 1 Bonsoir Papa · 2 Bonsoir Bruce · 3 Bonsoir la famille · 4 aucun
 
     public static final String[] GREETINGS = {"", " Papa", " Bruce", " la famille", null};
@@ -61,6 +61,8 @@ public class Theme {
                 t.name = "Grand et lisible"; t.accent = 7; t.base = 6; t.glow1 = 10; t.glow2 = 10; t.wallStyle = 3; t.dockSize = 2; t.textScale = 130; t.zoom = 115; t.radius = 18; t.showBanner = false; t.glassOpacity = 55; break;
             case "cinema":
                 t.name = "Cinéma"; t.layout = 1; t.wallStyle = 1; t.glow2 = 0; t.radius = 18; t.zoom = 112; t.glassOpacity = 45; break;
+            case "carrousel":
+                t.name = "Carrousel 3D"; t.layout = 2; t.clockPos = 1; t.wallStyle = 1; t.glow2 = 10; t.radius = 22; t.glassOpacity = 45; break;
             case "marine":
                 t.name = "Marine"; t.accent = 1; t.base = 3; t.glow1 = 1; t.glow2 = 3; t.wallStyle = 0; t.glassOpacity = 38; break;
             default:
@@ -123,7 +125,7 @@ public class Theme {
             t.zoom = clampI(o, "zoom", t.zoom, 100, 150);
             t.greeting = clampI(o, "greeting", t.greeting, 0, GREETINGS.length - 1);
             t.wallDim = clampI(o, "wallDim", t.wallDim, 0, 80);
-            t.layout = clampI(o, "layout", t.layout, 0, 1);
+            t.layout = clampI(o, "layout", t.layout, 0, 2);
             t.clockPos = clampI(o, "clockPos", t.clockPos, 0, 2);
             String wi = o.optString("wallImage", "");
             t.wallImage = wi.startsWith("content://media/") ? wi : "";
