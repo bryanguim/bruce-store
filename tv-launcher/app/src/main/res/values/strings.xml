@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_watcher_label">Bruce TV — bouton Accueil</string>
+    <string name="home_watcher_desc">Quand tu appuies sur le bouton Accueil de la télécommande, Bruce TV s\'ouvre à la place de l\'accueil Google TV. Bruce TV ne lit pas le contenu de l\'écran et ne collecte aucune donnée : il regarde seulement quelle appli vient de s\'ouvrir.</string>
+</resources>

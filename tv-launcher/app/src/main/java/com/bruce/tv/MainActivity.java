@@ -185,7 +185,9 @@ public class MainActivity extends Activity {
         if (mode == 1) openAll();
         else if (mode == 2) openSettings();
         else if (mode == 3) showIntro(introPage);
+        else if (mode == 4) showHomeSetup();
         else if (!prefs.getBoolean("intro_done", false) && appsLoaded) showIntro(0);
+        else if (appsLoaded && !homeServiceOn() && !prefs.getBoolean("home_setup_later", false)) showHomeSetup();
     }
 
     // ================================================================== écran d'accueil
@@ -681,9 +683,16 @@ public class MainActivity extends Activity {
             saveTheme();
             buildWall();
         }));
-        rows.add(addAction(list, "Revoir la présentation", () -> { settingsIndex = base + 1; showIntro(0); }));
-        rows.add(addAction(list, "Paramètres de la clé TV", () -> {
+        rows.add(addAction(list, "Bouton Accueil → Bruce TV  ·  " + (homeServiceOn() ? "activé ✓" : "à activer"), () -> { settingsIndex = base + 1; openAccessibility(); }));
+        rows.add(addAction(list, "Rediriger le bouton Accueil  ·  " + (prefs.getBoolean("home_override", true) ? "oui" : "non"), () -> {
             settingsIndex = base + 2;
+            prefs.edit().putBoolean("home_override", !prefs.getBoolean("home_override", true)).apply();
+            openSettings();
+        }));
+        rows.add(addAction(list, "Ouvrir l'accueil Google TV", () -> { settingsIndex = base + 3; openStockHome(); }));
+        rows.add(addAction(list, "Revoir la présentation", () -> { settingsIndex = base + 4; showIntro(0); }));
+        rows.add(addAction(list, "Paramètres de la clé TV", () -> {
+            settingsIndex = base + 5;
             try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
         }));
         rows.add(addAction(list, "Fermer", this::closeOverlay));
@@ -734,6 +743,97 @@ public class MainActivity extends Activity {
         View row = settingRow(label, "", d -> run.run());
         list.addView(row);
         return row;
+    }
+
+    // ================================================================== bouton Accueil (service d'accessibilité)
+    private boolean homeServiceOn() {
+        try {
+            String s = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            return s != null && s.contains(getPackageName() + "/");
+        } catch (Exception e) { return false; }
+    }
+
+    private void openAccessibility() {
+        try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        catch (Exception e) { openTvSettings(); }
+    }
+
+    private void openAppInfo() {
+        try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        catch (Exception ignored) {}
+    }
+
+    /** ouvre l'accueil Google TV d'origine (Bruce TV ne le remplace plus jusqu'à ce qu'on lance une appli) */
+    private void openStockHome() {
+        prefs.edit().putBoolean("stock_mode", true).apply();
+        for (String p : HomeWatcher.STOCK_HOMES) {
+            Intent i = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(p).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { startActivity(i); return; } catch (Exception ignored) {}
+        }
+        prefs.edit().putBoolean("stock_mode", false).apply();
+    }
+
+    private void showHomeSetup() {
+        mode = 4;
+        overlay.removeAllViews();
+        View dim = new View(this);
+        dim.setBackgroundColor(0xB3000000);
+        overlay.addView(dim, new FrameLayout.LayoutParams(-1, -1));
+        Glass.Panel panel = new Glass.Panel(this, T, dp(T.radius + 14));
+        overlay.addView(panel, at(dp(720), dp(420), Gravity.CENTER, 0, 0, 0, 0));
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(44), dp(30), dp(44), dp(24));
+        panel.addView(col, new FrameLayout.LayoutParams(-1, -1));
+        TextView title = text(28, T.textColor(), "sans-serif", Typeface.BOLD);
+        title.setText("Le bouton Accueil → Bruce TV");
+        col.addView(title);
+        TextView body = text(15, T.dim(0xD0), "sans-serif", Typeface.NORMAL);
+        body.setLineSpacing(dp(3), 1f);
+        body.setPadding(0, dp(14), 0, 0);
+        body.setText("Une seule fois : dans les réglages qui vont s'ouvrir, choisis « Bruce TV — bouton Accueil » puis active-le.\n\n"
+                + "Rien n'est désactivé sur la clé : l'accueil Google TV reste là en secours, la touche ⚙ et la recherche vocale marchent toujours.\n\n"
+                + "Si l'option est grisée : ouvre « Infos de l'appli », appuie sur ⋮ ou cherche « Autoriser les paramètres restreints », puis recommence.");
+        col.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_HORIZONTAL);
+        View b1 = pillButton("Ouvrir les réglages", true, this::openAccessibility);
+        View b2 = pillButton("Infos de l'appli", false, this::openAppInfo);
+        View b3 = pillButton("Plus tard", false, () -> { prefs.edit().putBoolean("home_setup_later", true).apply(); closeOverlay(); });
+        row.addView(b1); row.addView(b2); row.addView(b3);
+        col.addView(row);
+        b1.requestFocus();
+    }
+
+    private View pillButton(String label, boolean primary, final Runnable run) {
+        final TextView b = text(15, T.textColor(), "sans-serif-medium", Typeface.BOLD);
+        b.setText(label);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(22), dp(11), dp(22), dp(11));
+        b.setFocusable(true);
+        b.setFocusableInTouchMode(true);
+        final int acc = T.accentColor();
+        final int on = isLight(acc) ? 0xFF111111 : Color.WHITE;
+        final GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(99));
+        g.setColor(primary ? 0x33FFFFFF : 0x14FFFFFF);
+        g.setStroke(dp(1), 0x40FFFFFF);
+        b.setBackground(g);
+        b.setOnFocusChangeListener((v, has) -> {
+            GradientDrawable h = new GradientDrawable();
+            h.setCornerRadius(dp(99));
+            h.setColor(has ? acc : (primary ? 0x33FFFFFF : 0x14FFFFFF));
+            h.setStroke(dp(1), has ? 0xFFFFFFFF : 0x40FFFFFF);
+            v.setBackground(h);
+            b.setTextColor(has ? on : T.textColor());
+            v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(dur(140)).start();
+        });
+        b.setOnClickListener(v -> run.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.setMargins(dp(6), dp(14), dp(6), 0);
+        b.setLayoutParams(lp);
+        return b;
     }
 
     // ================================================================== présentation (premier démarrage)
@@ -828,7 +928,7 @@ public class MainActivity extends Activity {
 
     private void finishIntro() {
         prefs.edit().putBoolean("intro_done", true).apply();
-        closeOverlay();
+        if (!homeServiceOn()) showHomeSetup(); else closeOverlay();
     }
 
     // ================================================================== images de la clé (pour le fond)
@@ -939,6 +1039,9 @@ public class MainActivity extends Activity {
         ui.removeCallbacks(tick);
         ui.post(tick);
         if (appsLoaded) loadApps();
+        prefs.edit().putBoolean("stock_mode", false).apply();
+        if (mode == 4 && homeServiceOn()) closeOverlay();
+        else if (mode == 2) refreshAll(); // met à jour l'état « bouton Accueil » dans les réglages
     }
 
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(tick); }
@@ -980,6 +1083,7 @@ public class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (mode == 3) finishIntro();
+        else if (mode == 4) { prefs.edit().putBoolean("home_setup_later", true).apply(); closeOverlay(); }
         else if (mode != 0) closeOverlay();
         // sur l'accueil, Retour ne fait rien
     }
