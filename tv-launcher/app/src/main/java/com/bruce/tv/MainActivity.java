@@ -9,6 +9,10 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.database.Cursor;
+import android.provider.MediaStore;
+import android.content.ContentUris;
+import android.Manifest;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
@@ -86,6 +90,8 @@ public class MainActivity extends Activity {
     private int settingsIndex = 0;
     private boolean appsLoaded = false;
     private String lastDockFocus = null;
+    private int introPage = 0;
+    private String appsSig = "";
 
     private final Runnable tick = new Runnable() {
         @Override public void run() { updateClock(); ui.postDelayed(this, 1000 - (System.currentTimeMillis() % 1000)); }
@@ -132,7 +138,7 @@ public class MainActivity extends Activity {
         final int h = root.getHeight() > 0 ? root.getHeight() : getResources().getDisplayMetrics().heightPixels;
         final String key = t.wallKey();
         bg.execute(() -> {
-            Glass.build(t, w, h);
+            Glass.build(getApplicationContext(), t, w, h);
             ui.post(() -> { builtWallKey = key; refreshAll(); });
         });
     }
@@ -158,10 +164,16 @@ public class MainActivity extends Activity {
             List<App> sorted = new ArrayList<>(found.values());
             Collections.sort(sorted, (x, y) -> x.label.compareToIgnoreCase(y.label));
             ui.post(() -> {
+                // on ne redessine que si la liste des applis a vraiment changé (retour à l'accueil instantané)
+                StringBuilder sig = new StringBuilder();
+                for (App a : sorted) sig.append(a.pkg).append('|').append(a.label).append(';');
+                boolean changed = !sig.toString().equals(appsSig);
+                appsSig = sig.toString();
                 apps.clear();
                 for (App a : sorted) apps.put(a.pkg, a);
+                boolean first = !appsLoaded;
                 appsLoaded = true;
-                refreshAll();
+                if (changed || first) refreshAll();
             });
         });
     }
@@ -172,6 +184,8 @@ public class MainActivity extends Activity {
         buildHome();
         if (mode == 1) openAll();
         else if (mode == 2) openSettings();
+        else if (mode == 3) showIntro(introPage);
+        else if (!prefs.getBoolean("intro_done", false) && appsLoaded) showIntro(0);
     }
 
     // ================================================================== écran d'accueil
@@ -574,7 +588,20 @@ public class MainActivity extends Activity {
         o.add(opt("Fond · couleur", () -> Theme.BASE_NAMES[T.base], d -> T.base = cyc(T.base, Theme.BASES.length, d), true));
         o.add(opt("Fond · lumière principale", () -> Theme.GLOW_NAMES[T.glow1], d -> T.glow1 = cyc(T.glow1, Theme.GLOWS.length, d), true));
         o.add(opt("Fond · lumière secondaire", () -> Theme.GLOW_NAMES[T.glow2], d -> T.glow2 = cyc(T.glow2, Theme.GLOWS.length, d), true));
-        o.add(opt("Fond · style", () -> new String[]{"Rubans liquides", "Halos", "Dégradé", "Uni"}[T.wallStyle], d -> T.wallStyle = cyc(T.wallStyle, 4, d), true));
+        o.add(opt("Fond · style", () -> new String[]{"Rubans liquides", "Halos", "Dégradé", "Uni", "Mon image"}[T.wallStyle], d -> {
+            T.wallStyle = cyc(T.wallStyle, 5, d);
+            if (T.wallStyle == 4) { ensureImagePermission(); if (T.wallImage.isEmpty()) { List<String[]> im = images(); if (!im.isEmpty()) T.wallImage = im.get(0)[0]; } }
+        }, true));
+        if (T.wallStyle == 4) {
+            o.add(opt("Fond · image", this::imageLabel, d -> {
+                List<String[]> im = images();
+                if (im.isEmpty()) return;
+                int i = 0;
+                for (int k = 0; k < im.size(); k++) if (im.get(k)[0].equals(T.wallImage)) i = k;
+                T.wallImage = im.get(cyc(i, im.size(), d))[0];
+            }, true));
+            o.add(opt("Fond · assombrir l'image", () -> T.wallDim + " %", d -> T.wallDim = rng(T.wallDim, 0, 80, 10, d), true));
+        }
         o.add(opt("Verre · teinte", () -> T.glassLight == 1 ? "Clair" : "Sombre", d -> T.glassLight = cyc(T.glassLight, 2, d), false));
         o.add(opt("Verre · opacité", () -> T.glassOpacity + " %", d -> T.glassOpacity = rng(T.glassOpacity, 10, 90, 10, d), false));
         o.add(opt("Verre · flou", () -> T.blur + " / 5", d -> T.blur = rng(T.blur, 1, 5, 1, d), true));
@@ -650,8 +677,9 @@ public class MainActivity extends Activity {
             saveTheme();
             buildWall();
         }));
+        rows.add(addAction(list, "Revoir la présentation", () -> { settingsIndex = base + 1; showIntro(0); }));
         rows.add(addAction(list, "Paramètres de la clé TV", () -> {
-            settingsIndex = base + 1;
+            settingsIndex = base + 2;
             try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
         }));
         rows.add(addAction(list, "Fermer", this::closeOverlay));
@@ -702,6 +730,145 @@ public class MainActivity extends Activity {
         View row = settingRow(label, "", d -> run.run());
         list.addView(row);
         return row;
+    }
+
+    // ================================================================== présentation (premier démarrage)
+    private static final String[][] INTRO = {
+            {"✦", "Bienvenue sur Bruce TV", "Un écran d'accueil créé par Bruce, avec Claude, l'IA d'Anthropic.\nFait sur mesure pour cette clé TV et le vidéoprojecteur."},
+            {"⚡", "Rapide et léger", "Pas de pubs, pas de vidéos qui se lancent toutes seules, pas de recommandations.\nJuste tes applis, et une interface fluide même sur une petite clé."},
+            {"◐", "Vrai Liquid Glass", "Des panneaux en verre, une barre des tâches façon Apple,\net 7 thèmes prêts à l'emploi."},
+            {"✎", "Tout se personnalise", "Couleurs, fond, ta propre image, taille du texte, barre des tâches, horloge…\nChaque thème garde ses propres réglages."},
+            {"🔒", "Ta vie privée", "Bruce TV n'utilise pas Internet et ne collecte aucune donnée.\nTout reste sur la clé."},
+            {"◎", "Comment ça marche", "◀ ▶ pour choisir une appli · OK pour l'ouvrir\nAppui long ou ☰ : options · Réglages : tout personnaliser"}
+    };
+
+    private void showIntro(int page) {
+        mode = 3;
+        introPage = Math.max(0, Math.min(INTRO.length - 1, page));
+        overlay.removeAllViews();
+        View dim = new View(this);
+        dim.setBackgroundColor(0xB3000000);
+        overlay.addView(dim, new FrameLayout.LayoutParams(-1, -1));
+        Glass.Panel panel = new Glass.Panel(this, T, dp(T.radius + 14));
+        overlay.addView(panel, at(dp(700), dp(400), Gravity.CENTER, 0, 0, 0, 0));
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setPadding(dp(48), dp(34), dp(48), dp(26));
+        panel.addView(col, new FrameLayout.LayoutParams(-1, -1));
+
+        String[] p = INTRO[introPage];
+        TextView icon = text(44, T.textColor(), "sans-serif", Typeface.NORMAL);
+        icon.setText(p[0]);
+        icon.setGravity(Gravity.CENTER);
+        col.addView(icon);
+        TextView title = text(34, T.textColor(), "sans-serif", Typeface.BOLD);
+        title.setText(p[1]);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, dp(18), 0, 0);
+        col.addView(title);
+        TextView body = text(17, T.dim(0xC8), "sans-serif", Typeface.NORMAL);
+        body.setText(p[2]);
+        body.setGravity(Gravity.CENTER);
+        body.setLineSpacing(dp(4), 1f);
+        body.setPadding(0, dp(16), 0, 0);
+        col.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        LinearLayout dots = new LinearLayout(this);
+        dots.setGravity(Gravity.CENTER);
+        for (int i = 0; i < INTRO.length; i++) {
+            View d = new View(this);
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(4));
+            g.setColor(i == introPage ? T.textColor() : T.dim(0x44));
+            d.setBackground(g);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(i == introPage ? 26 : 8), dp(8));
+            lp.setMargins(dp(4), 0, dp(4), 0);
+            dots.addView(d, lp);
+        }
+        col.addView(dots);
+
+        boolean last = introPage == INTRO.length - 1;
+        final TextView btn = text(18, isLight(T.accentColor()) ? 0xFF111111 : Color.WHITE, "sans-serif-medium", Typeface.BOLD);
+        btn.setText(last ? "C'est parti" : "Suivant  ▶");
+        btn.setGravity(Gravity.CENTER);
+        btn.setPadding(dp(34), dp(13), dp(34), dp(13));
+        GradientDrawable bb = new GradientDrawable();
+        bb.setCornerRadius(dp(99));
+        bb.setColor(T.accentColor());
+        btn.setBackground(bb);
+        btn.setFocusable(true);
+        btn.setFocusableInTouchMode(true);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2);
+        blp.topMargin = dp(18);
+        col.addView(btn, blp);
+        TextView hint = text(12, T.dim(0x80), "sans-serif", Typeface.NORMAL);
+        hint.setText(introPage > 0 ? "◀ page précédente  ·  Retour pour passer" : "Retour pour passer la présentation");
+        hint.setPadding(0, dp(10), 0, 0);
+        col.addView(hint);
+
+        btn.setOnClickListener(v -> { if (introPage == INTRO.length - 1) finishIntro(); else showIntro(introPage + 1); });
+        btn.setOnKeyListener((v, code, e) -> {
+            if (e.getAction() != KeyEvent.ACTION_DOWN) return code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT;
+            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { if (introPage < INTRO.length - 1) showIntro(introPage + 1); return true; }
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT) { if (introPage > 0) showIntro(introPage - 1); return true; }
+            return false;
+        });
+        btn.requestFocus();
+        if (T.anim != 2) {
+            col.setAlpha(0f);
+            col.setTranslationX(dp(18));
+            col.animate().alpha(1f).translationX(0).setDuration(dur(260)).setInterpolator(new DecelerateInterpolator()).start();
+        }
+    }
+
+    private void finishIntro() {
+        prefs.edit().putBoolean("intro_done", true).apply();
+        closeOverlay();
+    }
+
+    // ================================================================== images de la clé (pour le fond)
+    private boolean hasImagePermission() {
+        String p = Build.VERSION.SDK_INT >= 33 ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        return checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void ensureImagePermission() {
+        if (hasImagePermission()) return;
+        String p = Build.VERSION.SDK_INT >= 33 ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        requestPermissions(new String[]{p}, 7);
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        if (code == 7 && hasImagePermission()) {
+            if (T.wallImage.isEmpty()) { List<String[]> im = images(); if (!im.isEmpty()) T.wallImage = im.get(0)[0]; }
+            saveTheme();
+            buildWall();
+        }
+    }
+
+    /** les 60 images les plus récentes de la clé : {uri, nom} */
+    private List<String[]> images() {
+        List<String[]> out = new ArrayList<>();
+        if (!hasImagePermission()) return out;
+        String[] proj = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME};
+        try (Cursor c = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, proj, null, null, MediaStore.Images.Media.DATE_ADDED + " DESC")) {
+            if (c == null) return out;
+            int id = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID), nm = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME);
+            while (c.moveToNext() && out.size() < 60) {
+                out.add(new String[]{ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(id)).toString(), c.getString(nm)});
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private String imageLabel() {
+        if (!hasImagePermission()) return "Autoriser l'accès";
+        List<String[]> im = images();
+        if (im.isEmpty()) return "Aucune image sur la clé";
+        for (String[] x : im) if (x[0].equals(T.wallImage)) return x[1].length() > 22 ? x[1].substring(0, 21) + "…" : x[1];
+        return "Choisir";
     }
 
     // ================================================================== actions
@@ -795,7 +962,8 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if (mode != 0) closeOverlay();
+        if (mode == 3) finishIntro();
+        else if (mode != 0) closeOverlay();
         // sur l'accueil, Retour ne fait rien
     }
 

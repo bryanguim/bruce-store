@@ -24,7 +24,9 @@ public class Theme {
     public String id, name;
     public int accent = 0, text = 0;               // index dans COLORS
     public int base = 0, glow1 = 0, glow2 = 1;     // index BASES / GLOWS
-    public int wallStyle = 0;                      // 0 rubans · 1 halos · 2 dégradé · 3 uni
+    public int wallStyle = 0;                      // 0 rubans · 1 halos · 2 dégradé · 3 uni · 4 mon image
+    public String wallImage = "";                  // image choisie sur la clé (content://…)
+    public int wallDim = 35;                       // assombrir l'image 0..80 %
     public int glassLight = 0;                     // 0 verre sombre · 1 verre clair
     public int glassOpacity = 40;                  // 10..90
     public int blur = 3;                           // 1..5
@@ -71,7 +73,7 @@ public class Theme {
     public int dockTile() { return dockSize == 0 ? 54 : dockSize == 1 ? 66 : 84; }
 
     /** clé qui change seulement si le fond doit être recalculé */
-    public String wallKey() { return base + "/" + glow1 + "/" + glow2 + "/" + wallStyle + "/" + blur; }
+    public String wallKey() { return base + "/" + glow1 + "/" + glow2 + "/" + wallStyle + "/" + blur + "/" + wallImage + "/" + wallDim; }
 
     public JSONObject toJson() {
         JSONObject o = new JSONObject();
@@ -82,6 +84,7 @@ public class Theme {
             o.put("dockPos", dockPos); o.put("iconMono", iconMono); o.put("textScale", textScale); o.put("clockStyle", clockStyle);
             o.put("h24", h24); o.put("showDate", showDate); o.put("showHero", showHero); o.put("showBanner", showBanner);
             o.put("anim", anim); o.put("zoom", zoom); o.put("greeting", greeting);
+            o.put("wallImage", wallImage); o.put("wallDim", wallDim);
         } catch (Exception ignored) {}
         return o;
     }
@@ -102,7 +105,7 @@ public class Theme {
             t.base = clampI(o, "base", t.base, 0, BASES.length - 1);
             t.glow1 = clampI(o, "glow1", t.glow1, 0, GLOWS.length - 1);
             t.glow2 = clampI(o, "glow2", t.glow2, 0, GLOWS.length - 1);
-            t.wallStyle = clampI(o, "wallStyle", t.wallStyle, 0, 3);
+            t.wallStyle = clampI(o, "wallStyle", t.wallStyle, 0, 4);
             t.glassLight = clampI(o, "glassLight", t.glassLight, 0, 1);
             t.glassOpacity = clampI(o, "glassOpacity", t.glassOpacity, 10, 90);
             t.blur = clampI(o, "blur", t.blur, 1, 5);
@@ -115,6 +118,9 @@ public class Theme {
             t.anim = clampI(o, "anim", t.anim, 0, 2);
             t.zoom = clampI(o, "zoom", t.zoom, 100, 150);
             t.greeting = clampI(o, "greeting", t.greeting, 0, GREETINGS.length - 1);
+            t.wallDim = clampI(o, "wallDim", t.wallDim, 0, 80);
+            String wi = o.optString("wallImage", "");
+            t.wallImage = wi.startsWith("content://media/") ? wi : "";
             t.h24 = o.optBoolean("h24", t.h24);
             t.showDate = o.optBoolean("showDate", t.showDate);
             t.showHero = o.optBoolean("showHero", t.showHero);

@@ -1,6 +1,9 @@
 package com.bruce.tv;
 
 import android.content.Context;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import java.io.InputStream;
 import android.graphics.Bitmap;
 import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
@@ -23,10 +26,43 @@ public class Glass {
     public static Bitmap wall, blurred;
 
     // ------------------------------------------------------------ génération du fond
-    public static void build(Theme t, int screenW, int screenH) {
+    /** lit l'image choisie, réduite à la taille utile (pas de gaspillage de mémoire) */
+    static Bitmap loadImage(Context ctx, String uri, int w, int h) {
+        if (uri == null || uri.isEmpty()) return null;
+        try {
+            Uri u = Uri.parse(uri);
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (InputStream in = ctx.getContentResolver().openInputStream(u)) { BitmapFactory.decodeStream(in, null, o); }
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+            int sample = 1;
+            while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;
+            BitmapFactory.Options o2 = new BitmapFactory.Options();
+            o2.inSampleSize = sample;
+            try (InputStream in = ctx.getContentResolver().openInputStream(u)) { return BitmapFactory.decodeStream(in, null, o2); }
+        } catch (Throwable e) { return null; }
+    }
+
+    public static void build(Context ctx, Theme t, int screenW, int screenH) {
         int w = Math.max(320, screenW / 2), h = Math.max(180, screenH / 2);
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
+        if (t.wallStyle == 4) {
+            Bitmap img = loadImage(ctx, t.wallImage, w, h);
+            if (img != null) {
+                float s = Math.max(w / (float) img.getWidth(), h / (float) img.getHeight());
+                float dw = img.getWidth() * s, dh = img.getHeight() * s;
+                c.drawBitmap(img, null, new RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f), new Paint(Paint.FILTER_BITMAP_FLAG));
+                img.recycle();
+                // voile sombre en dégradé : le texte reste lisible même sur une image claire
+                Paint v = new Paint();
+                float d = t.wallDim / 100f;
+                v.setShader(new LinearGradient(0, 0, 0, h, new int[]{withA(0, Math.min(1f, d + 0.15f)), withA(0, d * 0.6f), withA(0, Math.min(1f, d + 0.2f))}, null, Shader.TileMode.CLAMP));
+                c.drawRect(0, 0, w, h, v);
+                finish(b, t, w, h);
+                return;
+            }
+        }
         int base = Theme.BASES[t.base], g1 = Theme.GLOWS[t.glow1], g2 = Theme.GLOWS[t.glow2];
         boolean none1 = t.glow1 == Theme.GLOWS.length - 1, none2 = t.glow2 == Theme.GLOWS.length - 1;
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -60,6 +96,10 @@ public class Glass {
                 c.drawPath(path, s);
             }
         }
+        finish(b, t, w, h);
+    }
+
+    private static void finish(Bitmap b, Theme t, int w, int h) {
         wall = b;
         // flou : on réduit beaucoup puis on lisse (très rapide, fait une seule fois)
         int div = 10 + t.blur * 4;
