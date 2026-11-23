@@ -269,9 +269,9 @@ public class MainActivity extends Activity {
             heroSub = text(15, T.dim(0xB0), "sans-serif", Typeface.NORMAL);
             heroSub.setPadding(0, dp(10), 0, 0);
             hero.addView(heroSub);
-            int heroTop = dockTop ? 270 : 170;
+            int heroTop = T.layout == 1 ? 165 : (dockTop ? 270 : 170);
             home.addView(hero, at(dp(T.showBanner ? 520 : 820), -2, Gravity.TOP | Gravity.START, 52, heroTop, 0, 0));
-            if (T.showBanner) {
+            if (T.showBanner && T.layout == 0) {
                 Glass.Panel bp = new Glass.Panel(this, T, dp(T.radius));
                 bp.setPadding(dp(7), dp(7), dp(7), dp(7));
                 heroImage = new ImageView(this);
@@ -286,6 +286,8 @@ public class MainActivity extends Activity {
                 home.addView(bp, at(dp(300), dp(169), Gravity.TOP | Gravity.END, 0, heroTop - 12, 52, 0));
             }
         }
+
+        if (T.layout == 1) { buildPosters(); updateClock(); return; }
 
         // --- la barre des tâches (dock) en verre
         int tile = dp(T.dockTile());
@@ -359,6 +361,106 @@ public class MainActivity extends Activity {
             final View f = refocus != null ? refocus : first;
             f.requestFocus();
         }
+    }
+
+    // ================================================================== disposition « grandes affiches »
+    private void buildPosters() {
+        float s = T.dockSize == 0 ? 0.85f : T.dockSize == 1 ? 1f : 1.2f;
+        final int w = dp(232 * s), h = dp(130 * s), sq = dp(130 * s);
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.setClipChildren(false);
+        hs.setClipToPadding(false);
+        hs.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        hs.setSmoothScrollingEnabled(true);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
+        row.setPadding(dp(52), dp(30), dp(80), dp(30));
+        hs.addView(row);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        lp.bottomMargin = dp(52);
+        home.addView(hs, lp);
+
+        View first = null, refocus = null;
+        for (String p : dockList()) {
+            final App a = apps.get(p);
+            View c = poster(a.label, a.banner, a.banner == null ? a.icon : null, false, () -> launch(a.pkg), () -> appMenu(a, true), "OK pour ouvrir  ·  ☰ pour les options");
+            c.setTag(a.pkg);
+            addPoster(row, c, w, h);
+            if (first == null) first = c;
+            if (a.pkg.equals(lastDockFocus)) refocus = c;
+        }
+        View all = poster("Toutes les applis", null, getDrawable(R.drawable.ic_grid), true, this::openAll, null, "Toutes tes applications installées");
+        all.setTag("__all");
+        addPoster(row, all, sq, h);
+        View set = poster("Réglages", null, getDrawable(R.drawable.ic_gear), true, this::openSettings, null, "Style, couleurs, taille du texte…");
+        set.setTag("__settings");
+        addPoster(row, set, sq, h);
+        if (first == null) first = all;
+        if ("__all".equals(lastDockFocus)) refocus = all;
+        if ("__settings".equals(lastDockFocus)) refocus = set;
+        // éléments de la barre non utilisés ici (évite tout souci de référence vide)
+        tip = new TextView(this); dot = new View(this);
+        if (mode == 0) (refocus != null ? refocus : first).requestFocus();
+    }
+
+    private void addPoster(LinearLayout row, View v, int w, int h) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h);
+        lp.rightMargin = dp(26);
+        row.addView(v, lp);
+    }
+
+    private View poster(final String label, Drawable banner, Drawable icon, final boolean glyph, final Runnable click, final Runnable menu, final String sub) {
+        final FrameLayout v = new FrameLayout(this);
+        final float r = dp(Math.max(10, T.radius));
+        v.setFocusable(true);
+        v.setFocusableInTouchMode(true);
+        v.setBackground(tileBg(false, r));
+        v.setClipToOutline(true);
+        v.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View view, Outline o) { o.setRoundRect(0, 0, view.getWidth(), view.getHeight(), r); }
+        });
+        final ImageView iv = new ImageView(this);
+        if (banner != null) {
+            iv.setImageDrawable(banner);
+            iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            applyIconStyle(iv, false, false);
+            v.addView(iv, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            iv.setImageDrawable(icon);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            applyIconStyle(iv, glyph, false);
+            int is = dp(glyph ? 40 : 64);
+            v.addView(iv, new FrameLayout.LayoutParams(is, is, Gravity.CENTER));
+        }
+        final float z = Math.max(1.06f, T.zoom / 100f * 0.92f);
+        v.setOnFocusChangeListener((view, has) -> {
+            view.setBackground(tileBg(has, r));
+            if (banner == null) applyIconStyle(iv, glyph, has);
+            else if (T.iconMono == 1) applyIconStyle(iv, false, has);
+            view.animate().cancel();
+            view.animate().scaleX(has ? z : 1f).scaleY(has ? z : 1f).translationZ(has ? dp(14) : 0)
+                    .setDuration(dur(has ? 220 : 160))
+                    .setInterpolator(has ? new OvershootInterpolator(1.2f) : new DecelerateInterpolator()).start();
+            if (has) {
+                lastDockFocus = (String) view.getTag();
+                showHero(label, sub, null);
+                // garde l'affiche sélectionnée bien visible (défilement doux)
+                view.post(() -> view.requestRectangleOnScreen(new android.graphics.Rect(-dp(60), 0, view.getWidth() + dp(60), view.getHeight()), false));
+            }
+        });
+        v.setOnClickListener(view -> click.run());
+        if (menu != null) {
+            v.setOnLongClickListener(view -> { menu.run(); return true; });
+            v.setOnKeyListener((view, code, e) -> {
+                if (e.getAction() == KeyEvent.ACTION_UP && code == KeyEvent.KEYCODE_MENU) { menu.run(); return true; }
+                return false;
+            });
+        }
+        return v;
     }
 
     private void addDock(View v, int tile) {
@@ -589,6 +691,7 @@ public class MainActivity extends Activity {
             for (int k = 0; k < Theme.PRESET_IDS.length; k++) if (Theme.PRESET_IDS[k].equals(T.id)) i = k;
             T = loadTheme(Theme.PRESET_IDS[cyc(i, Theme.PRESET_IDS.length, d)]);
         }, true));
+        o.add(opt("Disposition", () -> T.layout == 1 ? "Grandes affiches" : "Barre en bas", d -> T.layout = cyc(T.layout, 2, d), false));
         o.add(opt("Couleur de sélection", () -> Theme.COLOR_NAMES[T.accent], d -> T.accent = cyc(T.accent, Theme.COLORS.length, d), false));
         o.add(opt("Couleur du texte", () -> Theme.COLOR_NAMES[T.text], d -> T.text = cyc(T.text, Theme.COLORS.length, d), false));
         o.add(opt("Fond · couleur", () -> Theme.BASE_NAMES[T.base], d -> T.base = cyc(T.base, Theme.BASES.length, d), true));
@@ -627,26 +730,80 @@ public class MainActivity extends Activity {
         return o;
     }
 
+    // ---------------- réglages simples (pour toute la famille)
+    private boolean advSettings = false;
+    private TextView settingsHint;
+    private static final String HINT_DEFAULT = "◀ ▶ pour changer · OK pour valider";
+
+    static class SOpt { String label, desc; java.util.function.Supplier<String> val; java.util.function.IntConsumer st; boolean wall;
+        SOpt(String l, String d, java.util.function.Supplier<String> v, java.util.function.IntConsumer s, boolean w) { label = l; desc = d; val = v; st = s; wall = w; } }
+
+    private static int pickIn(int[] vals, int cur, int dir) {
+        int best = 0;
+        for (int i = 0; i < vals.length; i++) if (Math.abs(vals[i] - cur) < Math.abs(vals[best] - cur)) best = i;
+        return vals[((best + dir) % vals.length + vals.length) % vals.length];
+    }
+
+    private List<SOpt> simpleOptions() {
+        List<SOpt> o = new ArrayList<>();
+        o.add(new SOpt("Style", "Change toute l'apparence d'un coup", () -> T.name, d -> {
+            int i = 0;
+            for (int k = 0; k < Theme.PRESET_IDS.length; k++) if (Theme.PRESET_IDS[k].equals(T.id)) i = k;
+            T = loadTheme(Theme.PRESET_IDS[cyc(i, Theme.PRESET_IDS.length, d)]);
+        }, true));
+        o.add(new SOpt("Disposition", "La façon dont les applis sont rangées à l'écran", () -> T.layout == 1 ? "Grandes affiches" : "Barre en bas", d -> T.layout = cyc(T.layout, 2, d), false));
+        o.add(new SOpt("Couleur", "La couleur de ce qui est sélectionné", () -> Theme.COLOR_NAMES[T.accent], d -> T.accent = cyc(T.accent, Theme.COLORS.length, d), false));
+        o.add(new SOpt("Fond d'écran", "L'image derrière les applis", () -> new String[]{"Vagues", "Lumières", "Dégradé", "Uni", "Ma photo"}[T.wallStyle], d -> {
+            T.wallStyle = cyc(T.wallStyle, 5, d);
+            if (T.wallStyle == 4) { ensureImagePermission(); if (T.wallImage.isEmpty()) { List<String[]> im = images(); if (!im.isEmpty()) T.wallImage = im.get(0)[0]; } }
+        }, true));
+        if (T.wallStyle == 4) {
+            o.add(new SOpt("Ma photo", "Choisis une photo enregistrée sur la clé", this::imageLabel, d -> {
+                List<String[]> im = images();
+                if (im.isEmpty()) return;
+                int i = 0;
+                for (int k = 0; k < im.size(); k++) if (im.get(k)[0].equals(T.wallImage)) i = k;
+                T.wallImage = im.get(cyc(i, im.size(), d))[0];
+            }, true));
+        }
+        final int[] sizes = {100, 120, 140};
+        o.add(new SOpt("Taille du texte", "Pour lire plus facilement de loin", () -> T.textScale >= 135 ? "Très grande" : T.textScale >= 115 ? "Grande" : "Normale",
+                d -> T.textScale = pickIn(sizes, T.textScale, d), false));
+        o.add(new SOpt("Taille des applis", "La taille des icônes dans la barre du bas", () -> new String[]{"Petites", "Normales", "Grandes"}[T.dockSize], d -> T.dockSize = cyc(T.dockSize, 3, d), false));
+        o.add(new SOpt("Horloge", "Afficher l'heure en haut à gauche", () -> T.clockStyle == 2 ? "Cachée" : "Affichée", d -> T.clockStyle = T.clockStyle == 2 ? 0 : 2, false));
+        o.add(new SOpt("Animations", "Les petits mouvements quand on se déplace", () -> T.anim == 2 ? "Non" : "Oui", d -> T.anim = T.anim == 2 ? 1 : 2, false));
+        return o;
+    }
+
+    private List<SOpt> advancedOptions() {
+        List<SOpt> o = new ArrayList<>();
+        for (Opt x : options()) {
+            final Opt op = x;
+            o.add(new SOpt(op.label(), "", op::value, op::step, op.wall()));
+        }
+        return o;
+    }
+
     private void openSettings() {
-        if (mode != 2) settingsIndex = 0;
+        if (mode != 2) { settingsIndex = 0; advSettings = false; }
         mode = 2;
         overlay.removeAllViews();
         View dim = new View(this);
         dim.setBackgroundColor(0x66000000);
         overlay.addView(dim, new FrameLayout.LayoutParams(-1, -1));
         Glass.Panel panel = new Glass.Panel(this, T, dp(T.radius + 8));
-        overlay.addView(panel, at(dp(520), -1, Gravity.END, 0, 30, 40, 30));
+        overlay.addView(panel, at(dp(540), -1, Gravity.END, 0, 30, 40, 30));
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(24), dp(22), dp(24), dp(10));
+        col.setPadding(dp(26), dp(24), dp(26), dp(10));
         panel.addView(col, new FrameLayout.LayoutParams(-1, -1));
-        TextView title = text(26, T.textColor(), "sans-serif", Typeface.BOLD);
-        title.setText("Réglages");
+        TextView title = text(28, T.textColor(), "sans-serif", Typeface.BOLD);
+        title.setText(advSettings ? "Plus de réglages" : "Réglages");
         col.addView(title);
-        TextView hint = text(12, T.dim(0x99), "sans-serif", Typeface.NORMAL);
-        hint.setText("◀ ▶ ou OK pour changer · chaque thème garde ses propres réglages");
-        hint.setPadding(0, dp(6), 0, dp(12));
-        col.addView(hint);
+        settingsHint = text(15, T.dim(0xB0), "sans-serif", Typeface.NORMAL);
+        settingsHint.setText(HINT_DEFAULT);
+        settingsHint.setPadding(0, dp(8), 0, dp(14));
+        col.addView(settingsHint);
         ScrollView sv = new ScrollView(this);
         sv.setVerticalScrollBarEnabled(false);
         col.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -655,18 +812,17 @@ public class MainActivity extends Activity {
         list.setPadding(0, dp(4), 0, dp(16));
         sv.addView(list);
 
-        final List<Opt> opts = options();
+        final List<SOpt> opts = advSettings ? advancedOptions() : simpleOptions();
         final List<View> rows = new ArrayList<>();
         for (int i = 0; i < opts.size(); i++) {
-            final Opt op = opts.get(i);
+            final SOpt op = opts.get(i);
             final int idx = i;
-            View row = settingRow(op.label(), "‹  " + op.value() + "  ›", dir -> {
+            View row = settingRow(op.label, "◀  " + op.val.get() + "  ▶", op.desc, dir -> {
                 settingsIndex = idx;
                 String before = T.wallKey();
-                op.step(dir);
+                op.st.accept(dir);
                 saveTheme();
-                if (op.wall() || !T.wallKey().equals(before)) {
-                    // fond à recalculer : on regroupe les appuis rapides
+                if (op.wall || !T.wallKey().equals(before)) {
                     ui.removeCallbacks(wallJob);
                     ui.postDelayed(wallJob, 260);
                     openSettings();
@@ -676,26 +832,38 @@ public class MainActivity extends Activity {
             rows.add(row);
         }
         final int base = opts.size();
-        rows.add(addAction(list, "Réinitialiser ce thème", () -> {
-            settingsIndex = base;
-            prefs.edit().remove("theme_" + T.id).apply();
-            T = Theme.preset(T.id);
-            saveTheme();
-            buildWall();
-        }));
-        rows.add(addAction(list, "Bouton Accueil → Bruce TV  ·  " + (homeServiceOn() ? "activé ✓" : "à activer"), () -> { settingsIndex = base + 1; openAccessibility(); }));
-        rows.add(addAction(list, "Rediriger le bouton Accueil  ·  " + (prefs.getBoolean("home_override", true) ? "oui" : "non"), () -> {
-            settingsIndex = base + 2;
-            prefs.edit().putBoolean("home_override", !prefs.getBoolean("home_override", true)).apply();
-            openSettings();
-        }));
-        rows.add(addAction(list, "Ouvrir l'accueil Google TV", () -> { settingsIndex = base + 3; openStockHome(); }));
-        rows.add(addAction(list, "Revoir la présentation", () -> { settingsIndex = base + 4; showIntro(0); }));
-        rows.add(addAction(list, "Paramètres de la clé TV", () -> {
-            settingsIndex = base + 5;
-            try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
-        }));
-        rows.add(addAction(list, "Fermer", this::closeOverlay));
+        final List<Runnable> acts = new ArrayList<>();
+        final List<String[]> labels = new ArrayList<>();
+        if (!advSettings) {
+            labels.add(new String[]{"Bouton Accueil  ·  " + (homeServiceOn() ? "Bruce TV ✓" : "à activer"), "Pour que le bouton Accueil de la télécommande ouvre Bruce TV"});
+            acts.add(this::openAccessibility);
+            labels.add(new String[]{"Plus de réglages…", "Tous les réglages détaillés"});
+            acts.add(() -> { advSettings = true; settingsIndex = 0; openSettings(); });
+            labels.add(new String[]{"Remettre comme au début", "Annule les changements de ce style"});
+            acts.add(() -> { prefs.edit().remove("theme_" + T.id).apply(); T = Theme.preset(T.id); saveTheme(); buildWall(); });
+            labels.add(new String[]{"Paramètres de la clé TV", "Wi-Fi, son, image, applications…"});
+            acts.add(this::openTvSettings);
+            labels.add(new String[]{"Fermer", "Revenir à l'accueil"});
+            acts.add(this::closeOverlay);
+        } else {
+            labels.add(new String[]{"◀  Réglages simples", "Revenir aux réglages simples"});
+            acts.add(() -> { advSettings = false; settingsIndex = 0; openSettings(); });
+            labels.add(new String[]{"Rediriger le bouton Accueil  ·  " + (prefs.getBoolean("home_override", true) ? "oui" : "non"), "Coupe ou remet l'ouverture de Bruce TV avec le bouton Accueil"});
+            acts.add(() -> { prefs.edit().putBoolean("home_override", !prefs.getBoolean("home_override", true)).apply(); openSettings(); });
+            labels.add(new String[]{"Ouvrir l'accueil Google TV", "L'écran d'accueil d'origine de la clé"});
+            acts.add(this::openStockHome);
+            labels.add(new String[]{"Revoir la présentation", ""});
+            acts.add(() -> showIntro(0));
+            labels.add(new String[]{"Fermer", "Revenir à l'accueil"});
+            acts.add(this::closeOverlay);
+        }
+        for (int k = 0; k < acts.size(); k++) {
+            final int ki = k;
+            final Runnable r = acts.get(k);
+            View row = settingRow(labels.get(k)[0], "", labels.get(k)[1], d -> { settingsIndex = base + ki; r.run(); });
+            list.addView(row);
+            rows.add(row);
+        }
         View target = rows.get(Math.min(Math.max(0, settingsIndex), rows.size() - 1));
         target.requestFocus();
     }
@@ -709,18 +877,18 @@ public class MainActivity extends Activity {
         return g;
     }
 
-    private View settingRow(String label, String value, final Step step) {
+    private View settingRow(String label, String value, final String desc, final Step step) {
         final LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(dp(14), dp(11), dp(14), dp(11));
+        r.setPadding(dp(16), dp(14), dp(16), dp(14));
         r.setFocusable(true);
         r.setFocusableInTouchMode(true);
         r.setBackground(rowBg(false));
-        final TextView l = text(15, T.textColor(), "sans-serif-medium", Typeface.NORMAL);
+        final TextView l = text(18, T.textColor(), "sans-serif-medium", Typeface.NORMAL);
         l.setText(label);
         r.addView(l, new LinearLayout.LayoutParams(0, -2, 1f));
-        final TextView v = text(15, T.dim(0xCC), "sans-serif", Typeface.BOLD);
+        final TextView v = text(18, T.dim(0xCC), "sans-serif", Typeface.BOLD);
         v.setText(value);
         r.addView(v);
         r.setOnFocusChangeListener((view, has) -> {
@@ -728,6 +896,7 @@ public class MainActivity extends Activity {
             int c = has ? (isLight(T.accentColor()) ? 0xFF111111 : Color.WHITE) : T.textColor();
             l.setTextColor(c);
             v.setTextColor(has ? c : T.dim(0xCC));
+            if (has && settingsHint != null) settingsHint.setText(desc == null || desc.isEmpty() ? HINT_DEFAULT : desc);
         });
         r.setOnKeyListener((view, code, e) -> {
             if (e.getAction() != KeyEvent.ACTION_DOWN) return code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT;
@@ -737,12 +906,6 @@ public class MainActivity extends Activity {
         });
         r.setOnClickListener(view -> step.go(1));
         return r;
-    }
-
-    private View addAction(LinearLayout list, String label, final Runnable run) {
-        View row = settingRow(label, "", d -> run.run());
-        list.addView(row);
-        return row;
     }
 
     // ================================================================== bouton Accueil (service d'accessibilité)
@@ -1084,6 +1247,7 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if (mode == 3) finishIntro();
         else if (mode == 4) { prefs.edit().putBoolean("home_setup_later", true).apply(); closeOverlay(); }
+        else if (mode == 2 && advSettings) { advSettings = false; settingsIndex = 0; openSettings(); }
         else if (mode != 0) closeOverlay();
         // sur l'accueil, Retour ne fait rien
     }
