@@ -327,9 +327,13 @@ public class MainActivity extends Activity {
         View set = dockTile("Réglages", getDrawable(R.drawable.ic_gear), true, this::openSettings, null, "Thèmes, couleurs, taille… tout se personnalise", null);
         set.setTag("__settings");
         addDock(set, tile);
+        View sys = dockTile("Paramètres de la clé", getDrawable(R.drawable.ic_sliders), true, this::openTvSettings, null, "Wi-Fi, Bluetooth, son, image, applis… (aussi avec la touche ⚙)", null);
+        sys.setTag("__system");
+        addDock(sys, tile);
         if (first == null) first = all;
         if ("__all".equals(lastDockFocus)) refocus = all;
         if ("__settings".equals(lastDockFocus)) refocus = set;
+        if ("__system".equals(lastDockFocus)) refocus = sys;
 
         // --- étiquette flottante + point sous l'appli sélectionnée
         tip = text(15, T.textColor(), "sans-serif-medium", Typeface.BOLD);
@@ -437,7 +441,7 @@ public class MainActivity extends Activity {
         if (menu != null) {
             v.setOnLongClickListener(view -> { menu.run(); return true; });
             v.setOnKeyListener((view, code, e) -> {
-                if (e.getAction() == KeyEvent.ACTION_UP && (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS)) { menu.run(); return true; }
+                if (e.getAction() == KeyEvent.ACTION_UP && code == KeyEvent.KEYCODE_MENU) { menu.run(); return true; }
                 return false;
             });
         }
@@ -542,7 +546,7 @@ public class MainActivity extends Activity {
             t.setOnClickListener(view -> { closeOverlay(); launch(a.pkg); });
             t.setOnLongClickListener(view -> { appMenu(a, false); return true; });
             t.setOnKeyListener((view, code, e) -> {
-                if (e.getAction() == KeyEvent.ACTION_UP && (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS)) { appMenu(a, false); return true; }
+                if (e.getAction() == KeyEvent.ACTION_UP && code == KeyEvent.KEYCODE_MENU) { appMenu(a, false); return true; }
                 return false;
             });
             GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
@@ -953,6 +957,19 @@ public class MainActivity extends Activity {
     @Override protected void onStop() {
         super.onStop();
         try { unregisterReceiver(pkgReceiver); } catch (Exception ignored) {}
+    }
+
+    /** touche ⚙ de la télécommande : paramètres de la clé (l'accueil Google TV qui la gérait est désactivé) */
+    @Override public boolean dispatchKeyEvent(KeyEvent e) {
+        if (e.getKeyCode() == KeyEvent.KEYCODE_SETTINGS) {
+            if (e.getAction() == KeyEvent.ACTION_UP) openTvSettings();
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    private void openTvSettings() {
+        try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
     }
 
     @Override protected void onNewIntent(Intent intent) {
