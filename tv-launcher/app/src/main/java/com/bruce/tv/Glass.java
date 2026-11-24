@@ -30,8 +30,8 @@ public class Glass {
     static Bitmap loadImage(Context ctx, String uri, int w, int h) {
         if (!Theme.validImage(uri)) return null;
         try {
-            if (uri.startsWith("file:")) {
-                String path = uri.substring(5);
+            if (uri.startsWith("file:") || uri.startsWith("app:")) {
+                String path = uri.startsWith("app:") ? new java.io.File(ctx.getFilesDir(), PhotoReceiver.FILE).getAbsolutePath() : uri.substring(5);
                 BitmapFactory.Options o = new BitmapFactory.Options();
                 o.inJustDecodeBounds = true;
                 BitmapFactory.decodeFile(path, o);

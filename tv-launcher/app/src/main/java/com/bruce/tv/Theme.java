@@ -83,6 +83,7 @@ public class Theme {
     public static boolean validImage(String s) {
         if (s == null) return false;
         if (s.startsWith("content://media/")) return true;
+        if (s.matches("app:wall_phone\\.jpg#\\d{1,15}")) return true;
         return s.startsWith("file:/storage/emulated/0/") && !s.contains("..") && s.length() < 600;
     }
 

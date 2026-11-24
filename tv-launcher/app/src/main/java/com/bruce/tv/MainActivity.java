@@ -186,6 +186,7 @@ public class MainActivity extends Activity {
         else if (mode == 2) openSettings();
         else if (mode == 3) showIntro(introPage);
         else if (mode == 4) showHomeSetup();
+        else if (mode == 5) showPhotoReceive();
         else if (!prefs.getBoolean("intro_done", false) && appsLoaded) showIntro(0);
         else if (appsLoaded && !homeServiceOn() && !prefs.getBoolean("home_setup_later", false)) showHomeSetup();
     }
@@ -823,6 +824,7 @@ public class MainActivity extends Activity {
     }
 
     private void closeOverlay() {
+        stopReceiver();
         mode = 0;
         overlay.removeAllViews();
         buildHome();
@@ -861,8 +863,8 @@ public class MainActivity extends Activity {
         }, true));
         if (T.wallStyle == 4) {
             o.add(opt("Fond · image", this::imageLabel, d -> {
-                if (!hasImagePermission()) { ensureImagePermission(); return; }
                 imgCache = null;
+                if (!hasImagePermission()) { ensureImagePermission(); if (images().isEmpty()) return; }
                 List<String[]> im = images();
                 if (im.isEmpty()) return;
                 int i = 0;
@@ -920,8 +922,8 @@ public class MainActivity extends Activity {
         }, true));
         if (T.wallStyle == 4) {
             o.add(new SOpt("Ma photo", "Choisis une photo enregistrée sur la clé (Téléchargements, Images…)", this::imageLabel, d -> {
-                if (!hasImagePermission()) { ensureImagePermission(); return; }
                 imgCache = null;
+                if (!hasImagePermission()) { ensureImagePermission(); if (images().isEmpty()) return; }
                 List<String[]> im = images();
                 if (im.isEmpty()) return;
                 int i = 0;
@@ -998,6 +1000,8 @@ public class MainActivity extends Activity {
         final int base = opts.size();
         final List<Runnable> acts = new ArrayList<>();
         final List<String[]> labels = new ArrayList<>();
+        labels.add(new String[]{"Envoyer une photo depuis mon téléphone", "Scanne le QR code avec ton téléphone : la photo devient le fond d'écran"});
+        acts.add(this::showPhotoReceive);
         if (!advSettings) {
             labels.add(new String[]{"Bouton Accueil  ·  " + (homeServiceOn() ? "Bruce TV ✓" : "à activer"), "Pour que le bouton Accueil de la télécommande ouvre Bruce TV"});
             acts.add(this::openAccessibility);
@@ -1253,6 +1257,104 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ================================================================== photo envoyée depuis le téléphone
+    private PhotoReceiver receiver;
+    private TextView recvStatus;
+
+    private void stopReceiver() {
+        if (receiver != null) { receiver.stop(); receiver = null; }
+    }
+
+    private void showPhotoReceive() {
+        mode = 5;
+        if (receiver == null || !receiver.isRunning()) {
+            stopReceiver();
+            final PhotoReceiver[] me = new PhotoReceiver[1];
+            me[0] = new PhotoReceiver(this, new PhotoReceiver.Listener() {
+                public void onPhoto(String value) {
+                    ui.post(() -> {
+                        T.wallStyle = 4;
+                        T.wallImage = value;
+                        imgCache = null;
+                        saveTheme();
+                        receiver = null;
+                        if (mode == 5) closeOverlay();
+                        buildWall();
+                    });
+                }
+                public void onStopped() {
+                    ui.post(() -> { if (receiver == me[0] && mode == 5 && recvStatus != null && !recvStatus.getText().toString().startsWith("✓"))
+                        recvStatus.setText("Temps écoulé. Appuie sur « Nouveau code » pour recommencer."); });
+                }
+            });
+            receiver = me[0];
+            if (!receiver.start()) receiver = null;
+        }
+        overlay.removeAllViews();
+        View dim = new View(this);
+        dim.setBackgroundColor(0xB3000000);
+        overlay.addView(dim, new FrameLayout.LayoutParams(-1, -1));
+        Glass.Panel panel = new Glass.Panel(this, T, dp(T.radius + 14));
+        overlay.addView(panel, at(dp(780), dp(420), Gravity.CENTER, 0, 0, 0, 0));
+        LinearLayout rowMain = new LinearLayout(this);
+        rowMain.setOrientation(LinearLayout.HORIZONTAL);
+        rowMain.setPadding(dp(36), dp(32), dp(40), dp(24));
+        panel.addView(rowMain, new FrameLayout.LayoutParams(-1, -1));
+        ImageView qr = new ImageView(this);
+        int qs = dp(250);
+        GradientDrawable white = new GradientDrawable();
+        white.setColor(Color.WHITE);
+        white.setCornerRadius(dp(22));
+        qr.setBackground(white);
+        qr.setPadding(dp(14), dp(14), dp(14), dp(14));
+        if (receiver != null) qr.setImageBitmap(qrBitmap(receiver.url, 512));
+        LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(qs, qs);
+        qlp.gravity = Gravity.CENTER_VERTICAL;
+        rowMain.addView(qr, qlp);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(34), 0, 0, 0);
+        rowMain.addView(col, new LinearLayout.LayoutParams(0, -1, 1f));
+        TextView title = text(26, T.textColor(), "sans-serif", Typeface.BOLD);
+        title.setText("Envoyer une photo");
+        col.addView(title);
+        TextView body = text(15, T.dim(0xD0), "sans-serif", Typeface.NORMAL);
+        body.setLineSpacing(dp(3), 1f);
+        body.setPadding(0, dp(12), 0, 0);
+        body.setText(receiver == null
+                ? "La clé n'est pas connectée au Wi-Fi. Connecte-la puis réessaie."
+                : "1.  Ouvre l'appareil photo de ton téléphone et vise le QR code.\n"
+                + "2.  Touche le lien qui apparaît, puis « Choisir une photo ».\n"
+                + "3.  La photo devient ton fond d'écran.\n\n"
+                + "Le téléphone doit être sur le même Wi-Fi. Rien ne passe par Internet, et ce code ne marche que 5 minutes.");
+        col.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
+        recvStatus = text(15, T.textColor(), "sans-serif-medium", Typeface.BOLD);
+        recvStatus.setText(receiver == null ? "" : "En attente de la photo…");
+        col.addView(recvStatus);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        View b1 = pillButton("Nouveau code", false, () -> { stopReceiver(); showPhotoReceive(); });
+        View b2 = pillButton("Fermer", true, () -> { stopReceiver(); mode = 2; openSettings(); });
+        row.addView(b1); row.addView(b2);
+        col.addView(row);
+        b2.requestFocus();
+    }
+
+    private static android.graphics.Bitmap qrBitmap(String text, int size) {
+        try {
+            java.util.Map<com.google.zxing.EncodeHintType, Object> hints = new java.util.EnumMap<>(com.google.zxing.EncodeHintType.class);
+            hints.put(com.google.zxing.EncodeHintType.MARGIN, 0);
+            hints.put(com.google.zxing.EncodeHintType.ERROR_CORRECTION, com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M);
+            com.google.zxing.common.BitMatrix m = new com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, size, size, hints);
+            int w = m.getWidth(), h = m.getHeight();
+            int[] px = new int[w * h];
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) px[y * w + x] = m.get(x, y) ? 0xFF000000 : 0xFFFFFFFF;
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+            b.setPixels(px, 0, w, 0, 0, w, h);
+            return b;
+        } catch (Exception e) { return null; }
+    }
+
     private void finishIntro() {
         prefs.edit().putBoolean("intro_done", true).apply();
         if (!homeServiceOn()) showHomeSetup(); else closeOverlay();
@@ -1289,6 +1391,11 @@ public class MainActivity extends Activity {
     private List<String[]> images() {
         if (imgCache != null && System.currentTimeMillis() - imgCacheAt < 4000) return imgCache;
         List<String[]> out = new ArrayList<>();
+        java.io.File phone = new java.io.File(getFilesDir(), PhotoReceiver.FILE);
+        if (phone.exists()) {
+            String v = T.wallImage.startsWith("app:") ? T.wallImage : "app:" + PhotoReceiver.FILE + "#" + phone.lastModified();
+            out.add(new String[]{v, "Photo du téléphone"});
+        }
         if (!hasImagePermission()) return out;
         java.util.Set<String> seen = new java.util.HashSet<>();
         List<java.io.File> files = new ArrayList<>();
@@ -1337,9 +1444,8 @@ public class MainActivity extends Activity {
     }
 
     private String imageLabel() {
-        if (!hasImagePermission()) return "Autoriser l'accès";
         List<String[]> im = images();
-        if (im.isEmpty()) return "Aucune image sur la clé";
+        if (im.isEmpty()) return hasImagePermission() ? "Aucune image sur la clé" : "Autoriser l'accès";
         for (String[] x : im) if (x[0].equals(T.wallImage)) return x[1].length() > 22 ? x[1].substring(0, 21) + "…" : x[1];
         return "Choisir";
     }
@@ -1453,10 +1559,11 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if (mode == 3) finishIntro();
         else if (mode == 4) { prefs.edit().putBoolean("home_setup_later", true).apply(); closeOverlay(); }
+        else if (mode == 5) { stopReceiver(); mode = 2; openSettings(); }
         else if (mode == 2 && advSettings) { advSettings = false; settingsIndex = 0; openSettings(); }
         else if (mode != 0) closeOverlay();
         // sur l'accueil, Retour ne fait rien
     }
 
-    @Override protected void onDestroy() { super.onDestroy(); bg.shutdownNow(); ui.removeCallbacksAndMessages(null); }
+    @Override protected void onDestroy() { stopReceiver(); super.onDestroy(); bg.shutdownNow(); ui.removeCallbacksAndMessages(null); }
 }
