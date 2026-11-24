@@ -5,7 +5,10 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
+import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
@@ -24,6 +27,44 @@ public class HomeWatcher extends AccessibilityService {
             "assistant", "voice", "panel", "dialog", "picker", "onboard", "setup", "update", "ambient"};
 
     private long lastLaunch = 0;
+    private long homeDownAt = 0;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+
+    /** au démarrage de la clé : on affiche Bruce TV dès que le service est prêt */
+    @Override protected void onServiceConnected() {
+        super.onServiceConnected();
+        if (SystemClock.elapsedRealtime() < 5 * 60 * 1000 && overrideOn()) {
+            ui.postDelayed(this::openBruce, 1200);
+            ui.postDelayed(this::openBruce, 4000);   // au cas où l'accueil Google TV repasse devant pendant le démarrage
+        }
+    }
+
+    /** appui court sur Accueil → Bruce TV, même si l'accueil Google TV est déjà affiché.
+     *  On ne bloque pas la touche : l'appui long (panneau de réglages rapides) marche toujours. */
+    @Override protected boolean onKeyEvent(KeyEvent e) {
+        if (e.getKeyCode() != KeyEvent.KEYCODE_HOME) return false;
+        if (e.getAction() == KeyEvent.ACTION_DOWN) { if (e.getRepeatCount() == 0) homeDownAt = SystemClock.uptimeMillis(); }
+        else if (e.getAction() == KeyEvent.ACTION_UP && SystemClock.uptimeMillis() - homeDownAt < 600) {
+            SharedPreferences p = getSharedPreferences("bruce_tv", MODE_PRIVATE);
+            if (p.getBoolean("home_override", true)) {
+                p.edit().putBoolean("stock_mode", false).apply();
+                ui.postDelayed(this::openBruce, 180);
+            }
+        }
+        return false;
+    }
+
+    private boolean overrideOn() {
+        SharedPreferences p = getSharedPreferences("bruce_tv", MODE_PRIVATE);
+        return p.getBoolean("home_override", true) && !p.getBoolean("stock_mode", false);
+    }
+
+    private void openBruce() {
+        lastLaunch = SystemClock.uptimeMillis();
+        Intent i = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        try { startActivity(i); } catch (Exception ignored) {}
+    }
 
     static boolean isStockHome(String pkg) {
         for (String p : STOCK_HOMES) if (p.equals(pkg)) return true;
@@ -50,12 +91,8 @@ public class HomeWatcher extends AccessibilityService {
         String low = cls.toLowerCase();
         for (String k : KEEP) if (low.contains(k)) return;
 
-        long now = SystemClock.uptimeMillis();
-        if (now - lastLaunch < 500) return;
-        lastLaunch = now;
-        Intent i = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-        try { startActivity(i); } catch (Exception ignored) {}
+        if (SystemClock.uptimeMillis() - lastLaunch < 500) return;
+        openBruce();
     }
 
     private boolean isActivity(String pkg, String cls) {
