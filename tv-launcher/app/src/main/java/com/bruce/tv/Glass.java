@@ -28,8 +28,20 @@ public class Glass {
     // ------------------------------------------------------------ génération du fond
     /** lit l'image choisie, réduite à la taille utile (pas de gaspillage de mémoire) */
     static Bitmap loadImage(Context ctx, String uri, int w, int h) {
-        if (uri == null || uri.isEmpty()) return null;
+        if (!Theme.validImage(uri)) return null;
         try {
+            if (uri.startsWith("file:")) {
+                String path = uri.substring(5);
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(path, o);
+                if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+                int sample = 1;
+                while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;
+                BitmapFactory.Options o2 = new BitmapFactory.Options();
+                o2.inSampleSize = sample;
+                return BitmapFactory.decodeFile(path, o2);
+            }
             Uri u = Uri.parse(uri);
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;

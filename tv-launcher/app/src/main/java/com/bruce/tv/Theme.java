@@ -79,6 +79,13 @@ public class Theme {
     public int dockTile() { return dockSize == 0 ? 54 : dockSize == 1 ? 66 : 84; }
 
     /** clé qui change seulement si le fond doit être recalculé */
+    /** seules les images de la galerie ou des dossiers partagés de la clé sont acceptées */
+    public static boolean validImage(String s) {
+        if (s == null) return false;
+        if (s.startsWith("content://media/")) return true;
+        return s.startsWith("file:/storage/emulated/0/") && !s.contains("..") && s.length() < 600;
+    }
+
     public String wallKey() { return base + "/" + glow1 + "/" + glow2 + "/" + wallStyle + "/" + blur + "/" + wallImage + "/" + wallDim; }
 
     public JSONObject toJson() {
@@ -128,7 +135,7 @@ public class Theme {
             t.layout = clampI(o, "layout", t.layout, 0, 2);
             t.clockPos = clampI(o, "clockPos", t.clockPos, 0, 2);
             String wi = o.optString("wallImage", "");
-            t.wallImage = wi.startsWith("content://media/") ? wi : "";
+            t.wallImage = validImage(wi) ? wi : "";
             t.h24 = o.optBoolean("h24", t.h24);
             t.showDate = o.optBoolean("showDate", t.showDate);
             t.showHero = o.optBoolean("showHero", t.showHero);

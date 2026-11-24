@@ -861,6 +861,8 @@ public class MainActivity extends Activity {
         }, true));
         if (T.wallStyle == 4) {
             o.add(opt("Fond · image", this::imageLabel, d -> {
+                if (!hasImagePermission()) { ensureImagePermission(); return; }
+                imgCache = null;
                 List<String[]> im = images();
                 if (im.isEmpty()) return;
                 int i = 0;
@@ -917,7 +919,9 @@ public class MainActivity extends Activity {
             if (T.wallStyle == 4) { ensureImagePermission(); if (T.wallImage.isEmpty()) { List<String[]> im = images(); if (!im.isEmpty()) T.wallImage = im.get(0)[0]; } }
         }, true));
         if (T.wallStyle == 4) {
-            o.add(new SOpt("Ma photo", "Choisis une photo enregistrée sur la clé", this::imageLabel, d -> {
+            o.add(new SOpt("Ma photo", "Choisis une photo enregistrée sur la clé (Téléchargements, Images…)", this::imageLabel, d -> {
+                if (!hasImagePermission()) { ensureImagePermission(); return; }
+                imgCache = null;
                 List<String[]> im = images();
                 if (im.isEmpty()) return;
                 int i = 0;
@@ -1269,25 +1273,67 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
         super.onRequestPermissionsResult(code, perms, res);
         if (code == 7 && hasImagePermission()) {
+            imgCache = null;
             if (T.wallImage.isEmpty()) { List<String[]> im = images(); if (!im.isEmpty()) T.wallImage = im.get(0)[0]; }
             saveTheme();
             buildWall();
         }
     }
 
-    /** les 60 images les plus récentes de la clé : {uri, nom} */
+    private List<String[]> imgCache; private long imgCacheAt;
+    private static final String[] IMG_DIRS = {"Download", "Pictures", "DCIM", "LocalSend", "Documents", "Movies"};
+
+    /** les 60 images les plus récentes de la clé : {uri, nom}.
+     *  On fouille directement les dossiers (Téléchargements, Images…) en plus de la galerie Android,
+     *  car les applis de transfert (LocalSend…) n'enregistrent pas toujours la photo dans la galerie. */
     private List<String[]> images() {
+        if (imgCache != null && System.currentTimeMillis() - imgCacheAt < 4000) return imgCache;
         List<String[]> out = new ArrayList<>();
         if (!hasImagePermission()) return out;
-        String[] proj = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME};
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        List<java.io.File> files = new ArrayList<>();
+        java.io.File root = android.os.Environment.getExternalStorageDirectory();
+        for (String d : IMG_DIRS) walkImages(new java.io.File(root, d), files, 0);
+        Collections.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        List<String> toScan = new ArrayList<>();
+        for (java.io.File f : files) {
+            if (out.size() >= 60) break;
+            try {
+                String path = f.getCanonicalPath();
+                if (!seen.add(path)) continue;
+                out.add(new String[]{"file:" + path, f.getName()});
+                toScan.add(path);
+            } catch (Exception ignored) {}
+        }
+        // on signale aussi ces photos à la galerie Android (utile pour les autres applis)
+        if (!toScan.isEmpty()) try { android.media.MediaScannerConnection.scanFile(this, toScan.toArray(new String[0]), null, null); } catch (Throwable ignored) {}
+        String[] proj = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATA};
         try (Cursor c = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, proj, null, null, MediaStore.Images.Media.DATE_ADDED + " DESC")) {
-            if (c == null) return out;
-            int id = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID), nm = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME);
-            while (c.moveToNext() && out.size() < 60) {
-                out.add(new String[]{ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(id)).toString(), c.getString(nm)});
+            if (c != null) {
+                int id = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID), nm = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME), da = c.getColumnIndex(MediaStore.Images.Media.DATA);
+                while (c.moveToNext() && out.size() < 60) {
+                    String data = da >= 0 ? c.getString(da) : null;
+                    if (data != null) { try { if (seen.contains(new java.io.File(data).getCanonicalPath())) continue; } catch (Exception ignored) {} }
+                    out.add(new String[]{ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(id)).toString(), c.getString(nm)});
+                }
             }
         } catch (Exception ignored) {}
+        imgCache = out; imgCacheAt = System.currentTimeMillis();
         return out;
+    }
+
+    private static void walkImages(java.io.File dir, List<java.io.File> out, int depth) {
+        if (depth > 3 || out.size() > 400) return;
+        java.io.File[] list = dir.listFiles();
+        if (list == null) return;
+        for (java.io.File f : list) {
+            String n = f.getName();
+            if (n.startsWith(".")) continue;
+            if (f.isDirectory()) { walkImages(f, out, depth + 1); continue; }
+            String l = n.toLowerCase(Locale.ROOT);
+            if ((l.endsWith(".jpg") || l.endsWith(".jpeg") || l.endsWith(".png") || l.endsWith(".webp") || l.endsWith(".heic") || l.endsWith(".heif"))
+                    && f.length() > 0 && f.length() < 60L * 1024 * 1024) out.add(f);
+        }
     }
 
     private String imageLabel() {
